@@ -2,8 +2,9 @@ package com.example.lambda.controller;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
-import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
+
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPEvent;
+import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.example.lambda.model.Item;
 import com.example.lambda.repository.ItemRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+public class ApiHandler implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final ItemRepository repo;
@@ -23,11 +24,11 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
     }
 
     @Override
-    public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent event,
+    public APIGatewayV2HTTPResponse handleRequest(APIGatewayV2HTTPEvent event,
                                                       Context context) {
         context.getLogger().log("Event: " + event);
-        String method = event.getHttpMethod();
-        String path = event.getPath();
+        String method = event.getRequestContext().getHttp().getMethod();
+        String path = event.getRequestContext().getHttp().getPath();
 
         context.getLogger().log("Method: " + method + " Path: " + path);
 
@@ -68,12 +69,12 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
     // HANDLERS
     // -----------------------------
 
-    private APIGatewayProxyResponseEvent handleList() throws Exception {
+    private APIGatewayV2HTTPResponse handleList() throws Exception {
         List<Item> items = repo.list();
         return respondJson(200, items);
     }
 
-    private APIGatewayProxyResponseEvent handleGet(String id) throws Exception {
+    private APIGatewayV2HTTPResponse handleGet(String id) throws Exception {
         Optional<Item> item = repo.get(id);
         if (item.isEmpty()) {
             return respond(404, "{\"message\": \"Item not found\"}");
@@ -81,7 +82,7 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
         return respondJson(200, item.get());
     }
 
-    private APIGatewayProxyResponseEvent handleCreate(String jsonBody) throws Exception {
+    private APIGatewayV2HTTPResponse handleCreate(String jsonBody) throws Exception {
         Item item = mapper.readValue(jsonBody, Item.class);
 
         if (item.id() == null || item.id().isBlank()) {
@@ -93,7 +94,7 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
         return respondJson(201, item);
     }
 
-    private APIGatewayProxyResponseEvent handleUpdate(String id, String jsonBody) throws Exception {
+    private APIGatewayV2HTTPResponse handleUpdate(String id, String jsonBody) throws Exception {
         Item incoming = mapper.readValue(jsonBody, Item.class);
 
         if (incoming.name() == null && incoming.description() == null) {
@@ -113,12 +114,12 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
                 incoming.description() == null ? updated.description() : incoming.description()
         );
 
-        repo.save(updated);
+        repo.save(newItem);
 
         return respondJson(200, updated);
     }
 
-    private APIGatewayProxyResponseEvent handleDelete(String id) {
+    private APIGatewayV2HTTPResponse handleDelete(String id) {
         repo.delete(id);
         return respond(200, "{\"deleted\": true}");
     }
@@ -132,17 +133,18 @@ public class ApiHandler implements RequestHandler<APIGatewayProxyRequestEvent, A
         return path.substring(path.lastIndexOf("/") + 1);
     }
 
-    private APIGatewayProxyResponseEvent respond(int status, String body) {
-        return new APIGatewayProxyResponseEvent()
+    private APIGatewayV2HTTPResponse respond(int status, String body) {
+        return APIGatewayV2HTTPResponse.builder()
                 .withStatusCode(status)
                 .withHeaders(Map.of(
                         "Content-Type", "application/json",
                         "Access-Control-Allow-Origin", "*"
                 ))
-                .withBody(body);
+                .withBody(body)
+                .build();
     }
 
-    private APIGatewayProxyResponseEvent respondJson(int status, Object obj) throws Exception {
+    private APIGatewayV2HTTPResponse respondJson(int status, Object obj) throws Exception {
         String json = mapper.writeValueAsString(obj);
         return respond(status, json);
     }
